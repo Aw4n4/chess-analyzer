@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Practice Chess Analyzer</title>
 <style>
-:root{color-scheme:dark;--bg:#171717;--panel:#242424;--muted:#aaa;--green:#769656;--cream:#eeeed2;--accent:#a8d477}
+:root{color-scheme:dark;--bg:#171717;--panel:#242424;--muted:#aaa;--green:#769656;--cream:#eeeed2}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f4f4;font:16px system-ui,-apple-system,sans-serif}
 header{padding:16px;text-align:center;background:#202020;border-bottom:1px solid #383838}h1{font-size:20px;margin:0}header p{margin:5px 0 0;color:var(--muted);font-size:13px}
 main{max-width:1050px;margin:auto;padding:14px;display:grid;grid-template-columns:minmax(280px,1.15fr) minmax(260px,.85fr);gap:16px}
@@ -13,7 +13,7 @@ main{max-width:1050px;margin:auto;padding:14px;display:grid;grid-template-column
 #board{width:100%;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));overflow:hidden;border-radius:6px;touch-action:manipulation}
 .square{border:0;border-radius:0;position:relative;display:grid;place-items:center;padding:0;min-width:0;cursor:pointer}
 .light{background:var(--cream)}.dark{background:var(--green)}
-.piece{display:block;width:88%;height:88%;object-fit:contain;pointer-events:none;user-select:none;-webkit-user-drag:none;filter:drop-shadow(0 1px 1px #0005)}
+.piece{width:88%;height:88%;display:block;pointer-events:none;filter:drop-shadow(0 2px 1px #0005)}
 .square.selected{box-shadow:inset 0 0 0 4px #f5d547}.square.target:after{content:"";position:absolute;width:22%;height:22%;border-radius:50%;background:#183d1b88;pointer-events:none}.square.capture:after{content:"";position:absolute;inset:4px;border:4px solid #183d1b99;border-radius:50%;pointer-events:none}
 .coord{position:absolute;z-index:1;font:11px system-ui;left:4px;top:2px;color:#283a20;pointer-events:none}
 .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
@@ -37,58 +37,56 @@ label{display:block;font-size:13px;color:#ccc;margin:12px 0 5px}textarea{width:1
 <textarea id="fen" spellcheck="false">rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1</textarea>
 <div class="controls"><button id="load">Load FEN</button><button id="copy">Copy FEN</button></div>
 <div class="result"><div class="small">Analysis result</div><div id="analysis" class="status">Chessboard is loading.</div><button class="primary" id="analyse">Analyse position</button></div>
-<p class="warning">For practice and study. This page does not connect to or read the Chess.com app. Analysis uses Lichess's public cloud-evaluation database; not every position has a cached result. Piece artwork is loaded from a public CDN, so an internet connection is required.</p>
+<p class="warning">For practice and study only. This page does not connect to or read the Chess.com app. Analysis uses Lichess's public cloud-evaluation database; not every position has a cached result. Chess pieces are drawn directly in this file, so no image CDN is needed.</p>
 </section>
 </main>
 <script type="module">
 const boardEl=document.querySelector('#board'),fenBox=document.querySelector('#fen'),turnEl=document.querySelector('#turn'),analysisEl=document.querySelector('#analysis');
-const pieceCode={K:'wK',Q:'wQ',R:'wR',B:'wB',N:'wN',P:'wP',k:'bK',q:'bQ',r:'bR',b:'bB',n:'bN',p:'bP'};
-const pieceURL=code=>'https://cdn.jsdelivr.net/npm/chessboardjs@1.0.0/img/chesspieces/wikipedia/'+code+'.png';
 let game,flipped=false,selected=null;
-function message(s){analysisEl.textContent=s}
+const shapes={
+k:'<path d="M50 9V25M40 17H60"/><path d="M28 39Q28 29 50 29Q72 29 72 39L78 78H22Z"/><path d="M17 82H83V91H17Z"/>',
+q:'<path d="M18 29L29 43L39 20L50 42L61 20L71 43L82 29L73 76H27Z"/><circle cx="18" cy="24" r="6"/><circle cx="39" cy="15" r="6"/><circle cx="50" cy="37" r="5"/><circle cx="61" cy="15" r="6"/><circle cx="82" cy="24" r="6"/><path d="M22 81H78V91H22Z"/>',
+r:'<path d="M23 18H34V29H43V18H57V29H66V18H77V39H70L75 78H25L30 39H23Z"/><path d="M19 82H81V91H19Z"/>',
+b:'<path d="M50 13Q72 31 63 47Q59 55 70 76H30Q41 55 37 47Q28 31 50 13Z"/><path d="M43 28L57 42M57 28L43 42" stroke-width="4"/><path d="M23 81H77V91H23Z"/>',
+n:'<path d="M27 77Q25 58 35 43Q41 34 38 22Q55 18 69 31Q82 44 74 58L81 78Z"/><path d="M51 35L56 35" stroke-width="5"/><path d="M22 82H82V91H22Z"/>',
+p:'<circle cx="50" cy="27" r="14"/><path d="M39 43Q29 54 35 67L26 79H74L65 67Q71 54 61 43Z"/><path d="M22 82H78V91H22Z"/>'
+};
+function pieceSVG(type,color){
+ const white=color==='w',fill=white?'#f8f8f4':'#303238',stroke=white?'#55585c':'#111317';
+ return `<svg class="piece" viewBox="0 0 100 100" aria-hidden="true"><g fill="${fill}" stroke="${stroke}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">${shapes[type]}</g>${white?'<path d="M32 72H68" stroke="#c5c7c5" stroke-width="2" opacity=".8"/>':''}</svg>`;
+}
 function render(){
- boardEl.innerHTML='';
- const files=flipped?'hgfedcba':'abcdefgh',ranks=flipped?'12345678':'87654321';
+ boardEl.innerHTML='';const files=flipped?'hgfedcba':'abcdefgh',ranks=flipped?'12345678':'87654321';
  for(let ri=0;ri<8;ri++)for(let fi=0;fi<8;fi++){
   const file=files[fi],rank=ranks[ri],sq=file+rank,p=game.get(sq),b=document.createElement('button');
   b.type='button';b.className='square '+(((fi+ri)%2===0)?'light':'dark')+(selected===sq?' selected':'');
-  if(p){const img=document.createElement('img');img.className='piece';img.alt=(p.color==='w'?'White ':'Black ')+({k:'king',q:'queen',r:'rook',b:'bishop',n:'knight',p:'pawn'}[p.type]);img.src=pieceURL(pieceCode[p.color==='w'?p.type.toUpperCase():p.type]);img.onerror=()=>{img.alt='Piece image unavailable'};b.append(img)}
+  if(p)b.innerHTML=pieceSVG(p.type,p.color);
   if(fi===0){const c=document.createElement('span');c.className='coord';c.textContent=rank;b.append(c)}
   if(ri===7){const c=document.createElement('span');c.className='coord';c.style.left='auto';c.style.right='4px';c.style.top='auto';c.style.bottom='2px';c.textContent=file;b.append(c)}
-  if(selected){try{if(game.moves({square:selected,verbose:true}).some(m=>m.to===sq))b.classList.add(p?'capture':'target')}catch(e){}}
+  if(selected){if(game.moves({square:selected,verbose:true}).some(m=>m.to===sq))b.classList.add(p?'capture':'target')}
   b.addEventListener('click',()=>tap(sq));boardEl.append(b);
  }
- fenBox.value=game.fen();
- turnEl.textContent=(game.turn()==='w'?'White':'Black')+' to move'+(game.isCheck()?' · Check':'')+(game.isGameOver()?' · Game over':'');
+ fenBox.value=game.fen();turnEl.textContent=(game.turn()==='w'?'White':'Black')+' to move'+(game.isCheck()?' · Check':'')+(game.isGameOver()?' · Game over':'');
 }
-function tap(sq){
- const p=game.get(sq);
- if(!selected){if(p&&p.color===game.turn()){selected=sq;render()}return}
- if(selected===sq){selected=null;render();return}
+function tap(sq){const p=game.get(sq);if(!selected){if(p&&p.color===game.turn()){selected=sq;render()}return}if(selected===sq){selected=null;render();return}
  try{const m=game.move({from:selected,to:sq,promotion:'q'});if(m){selected=null;message('Move played: '+m.san+'. Tap Analyse to request a study evaluation.');render();return}}catch(e){}
- selected=p&&p.color===game.turn()?sq:null;render();
-}
-async function start(){
- try{
-  const mod=await import('https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm');
-  game=new mod.Chess();
-  document.querySelector('#reset').onclick=()=>{game.reset();selected=null;message('Starting position loaded.');render()};
-  document.querySelector('#flip').onclick=()=>{flipped=!flipped;render()};
-  document.querySelector('#back').onclick=()=>{game.undo();selected=null;message('Move undone.');render()};
-  document.querySelector('#load').onclick=()=>{try{game.load(fenBox.value.trim());selected=null;message('Position loaded.');render()}catch(e){message('Invalid FEN. Check the text and try again.')}};
-  document.querySelector('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(game.fen());message('FEN copied.')}catch(e){message('Clipboard unavailable; select and copy the FEN text manually.')}};
-  document.querySelector('#analyse').onclick=async()=>{
-   const fen=game.fen();message('Checking the public study-evaluation database…');
-   try{const r=await fetch('https://lichess.org/api/cloud-eval?fen='+encodeURIComponent(fen)+'&multiPv=3');
-    if(r.status===404){message('No cached evaluation for this position. Try another study position.');return}
-    if(!r.ok)throw Error();const d=await r.json();
-    const lines=(d.pvs||[]).map((pv,i)=>`${i+1}. ${pv.moves.split(' ').slice(0,8).join(' ')} · ${pv.cp!==undefined?(pv.cp/100).toFixed(2):pv.mate!==undefined?'Mate in '+pv.mate:'—'}`);
-    message(lines.length?`Depth ${d.depth??'?'} · ${d.knodes??'?'}k nodes\n`+lines.join('\n'):'No lines returned.');
-   }catch(e){message('Could not reach the analysis service. Check your internet connection and try again.')}
-  };
-  render();message('Board ready. Tap Analyse to request a study evaluation.');
- }catch(e){turnEl.textContent='Could not load the chess rules library. Check your internet connection, then refresh.';message('The chessboard library failed to load. Refresh while online.')}
-}
+ selected=p&&p.color===game.turn()?sq:null;render()}
+function message(s){analysisEl.textContent=s}
+async function start(){try{
+ const mod=await import('https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm');game=new mod.Chess();
+ document.querySelector('#reset').onclick=()=>{game.reset();selected=null;message('Starting position loaded.');render()};
+ document.querySelector('#flip').onclick=()=>{flipped=!flipped;render()};
+ document.querySelector('#back').onclick=()=>{game.undo();selected=null;message('Move undone.');render()};
+ document.querySelector('#load').onclick=()=>{try{game.load(fenBox.value.trim());selected=null;message('Position loaded.');render()}catch(e){message('Invalid FEN. Check the text and try again.')}};
+ document.querySelector('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(game.fen());message('FEN copied.')}catch(e){message('Clipboard unavailable; select and copy the FEN text manually.')}};
+ document.querySelector('#analyse').onclick=async()=>{message('Checking the public study-evaluation database…');try{
+  const r=await fetch('https://lichess.org/api/cloud-eval?fen='+encodeURIComponent(game.fen())+'&multiPv=3');
+  if(r.status===404){message('No cached evaluation for this position. Try another study position.');return}
+  if(!r.ok)throw Error();const d=await r.json();const lines=(d.pvs||[]).map((pv,i)=>`${i+1}. ${pv.moves.split(' ').slice(0,8).join(' ')} · ${pv.cp!==undefined?(pv.cp/100).toFixed(2):pv.mate!==undefined?'Mate in '+pv.mate:'—'}`);
+  message(lines.length?`Depth ${d.depth??'?'} · ${d.knodes??'?'}k nodes\n`+lines.join('\n'):'No lines returned.');
+ }catch(e){message('Could not reach the analysis service. Check your internet connection and try again.')}};
+ render();message('Board ready. Tap Analyse to request a study evaluation.');
+ }catch(e){turnEl.textContent='Could not load the chess rules library. Check your internet connection, then refresh.';message('The chess rules library failed to load. Refresh while online.')}}
 start();
 </script>
 </body></html>

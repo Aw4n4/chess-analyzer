@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Practice Chess Analyzer</title>
+<style>
+:root{color-scheme:dark;--bg:#171717;--panel:#242424;--muted:#aaa;--green:#769656;--cream:#eeeed2;--accent:#9fca72}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f4f4f4;font:16px system-ui,-apple-system,sans-serif}
+header{padding:18px 16px;text-align:center;background:#202020;border-bottom:1px solid #383838}
+h1{font-size:20px;margin:0}header p{margin:5px 0 0;color:var(--muted);font-size:13px}
+main{max-width:980px;margin:auto;padding:14px;display:grid;grid-template-columns:minmax(280px,560px) minmax(260px,1fr);gap:16px}
+.panel{background:var(--panel);border:1px solid #383838;border-radius:14px;padding:14px}
+#board{width:100%;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);overflow:hidden;border-radius:6px;touch-action:manipulation}
+.square{border:0;border-radius:0;position:relative;display:grid;place-items:center;padding:0;font-family:"Arial Unicode MS",serif;font-size:clamp(28px,7vw,58px);line-height:1;cursor:pointer}
+.light{background:var(--cream);color:#fff;text-shadow:1px 1px 2px #333,-1px -1px 2px #333}.dark{background:var(--green);color:#fff;text-shadow:1px 1px 2px #333,-1px -1px 2px #333}
+.square.selected{box-shadow:inset 0 0 0 5px #f5d547}.square.target:after{content:"";position:absolute;width:22%;height:22%;border-radius:50%;background:#183d1b88}.square.capture:after{content:"";position:absolute;inset:4px;border:4px solid #183d1b99;border-radius:50%}
+.coord{position:absolute;font:11px system-ui;left:4px;top:2px;color:#283a20;text-shadow:none;pointer-events:none}
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button,input,textarea{font:inherit}button{background:#3b3b3b;color:white;border:1px solid #555;border-radius:9px;padding:10px 13px;cursor:pointer}button.primary{background:#547d37;border-color:#6b984b}button:disabled{opacity:.45}
+label{display:block;font-size:13px;color:#ccc;margin:12px 0 5px}textarea,input{width:100%;background:#151515;color:white;border:1px solid #555;border-radius:8px;padding:10px}
+textarea{min-height:76px;resize:vertical;font:12px ui-monospace,monospace}
+.status{color:var(--muted);font-size:13px;line-height:1.45;margin:10px 0}
+.result{background:#171717;border-radius:10px;padding:12px;margin-top:12px;min-height:90px}
+.move{font-size:20px;font-weight:700;color:var(--accent)}.small{font-size:12px;color:var(--muted)}
+.warning{font-size:12px;color:#e5c98c;line-height:1.45;margin-top:12px}
+@media(max-width:720px){main{grid-template-columns:1fr;padding:10px}.square{font-size:clamp(30px,10vw,52px)}}
+</style>
+</head>
+<body>
+<header><h1>♟ Practice Chess Analyzer</h1><p>Set up a position, play moves, and check available analysis.</p></header>
+<main>
+<section class="panel">
+<div id="board" aria-label="Interactive chessboard"></div>
+<div class="controls">
+<button id="back">← Back</button><button id="flip">Flip board</button><button id="reset">Starting position</button>
+</div>
+<div class="status" id="turn">White to move</div>
+</section>
+<section class="panel">
+<strong>Position setup</strong>
+<label for="fen">FEN position</label>
+<textarea id="fen" spellcheck="false">rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1</textarea>
+<div class="controls"><button id="load">Load FEN</button><button id="copy">Copy FEN</button></div>
+<div class="result">
+<div class="small">Analysis result</div>
+<div id="analysis" class="status">Load a position, then tap Analyse.</div>
+<button class="primary" id="analyse">Analyse position</button>
+</div>
+<p class="warning">Practice/ study use only. This page does not connect to or read the Chess.com app, and it does not provide hidden assistance during live games. Cloud analysis may not have a saved evaluation for every position.</p>
+</section>
+</main>
+<script type="module">
+import {Chess} from 'https://cdnjs.cloudflare.com/ajax/libs/chess.js/1.4.0/chess.min.js';
+const glyph={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟︎'};
+let game=new Chess(), flipped=false, selected=null, history=[];
+const board=document.querySelector('#board'),fenBox=document.querySelector('#fen'),turn=document.querySelector('#turn'),analysis=document.querySelector('#analysis');
+function render(){
+ board.innerHTML='';
+ const files=flipped?'hgfedcba':'abcdefgh',ranks=flipped?'12345678':'87654321';
+ for(const rank of ranks)for(const file of files){
+  const sq=file+rank,p=game.get(sq),btn=document.createElement('button');
+  const light=((files.indexOf(file)+(Number(rank)-1))%2===1);
+  btn.className='square '+(light?'light':'dark')+(selected===sq?' selected':'');
+  btn.textContent=p?glyph[p.color==='w'?p.type.toUpperCase():p.type]:'';
+  if(file==='a'){const c=document.createElement('span');c.className='coord';c.textContent=rank;btn.append(c)}
+  if(rank===(flipped?'1':'8')){const c=document.createElement('span');c.className='coord';c.style.left='auto';c.style.right='4px';c.style.top='auto';c.style.bottom='2px';c.textContent=file;btn.append(c)}
+  if(selected){const moves=game.moves({square:selected,verbose:true});if(moves.some(m=>m.to===sq))btn.classList.add(p?'capture':'target')}
+  btn.addEventListener('click',()=>tap(sq));board.append(btn);
+ }
+ fenBox.value=game.fen();
+ turn.textContent=(game.turn()==='w'?'White':'Black')+' to move'+(game.isCheck()?' · Check':'')+(game.isGameOver()?' · Game over':'');
+}
+function tap(sq){
+ const p=game.get(sq);
+ if(!selected){if(p&&p.color===game.turn()){selected=sq;render()}return}
+ if(selected===sq){selected=null;render();return}
+ try{
+  const move=game.move({from:selected,to:sq,promotion:'q'});
+  if(move){history.push(move);selected=null;analysis.textContent='Position changed. Tap Analyse to request a study evaluation.';render();return}
+ }catch(e){}
+ if(p&&p.color===game.turn())selected=sq;else selected=null;
+ render();
+}
+document.querySelector('#reset').onclick=()=>{game.reset();history=[];selected=null;analysis.textContent='Starting position loaded.';render()};
+document.querySelector('#flip').onclick=()=>{flipped=!flipped;render()};
+document.querySelector('#back').onclick=()=>{game.undo();selected=null;analysis.textContent='Move undone.';render()};
+document.querySelector('#load').onclick=()=>{try{game.load(fenBox.value.trim());selected=null;history=[];analysis.textContent='Position loaded. Tap Analyse for a study evaluation.';render()}catch(e){analysis.textContent='That FEN is invalid. Check the position and try again.'}};
+document.querySelector('#copy').onclick=async()=>{try{await navigator.clipboard.writeText(game.fen());analysis.textContent='FEN copied.'}catch(e){analysis.textContent='Copy is unavailable in this browser. You can select the FEN text manually.'}};
+document.querySelector('#analyse').onclick=async()=>{
+ const fen=game.fen();analysis.textContent='Checking the public study-evaluation database…';
+ try{
+  const url='https://lichess.org/api/cloud-eval?fen='+encodeURIComponent(fen)+'&multiPv=3';
+  const res=await fetch(url);if(res.status===404){analysis.textContent='No cached cloud evaluation for this position. Try a different study position.';return}
+  if(!res.ok)throw Error('Service unavailable');const data=await res.json();
+  const lines=(data.pvs||[]).map((pv,i)=>`${i+1}. ${pv.moves.split(' ').slice(0,8).join(' ')}  ·  ${(pv.cp!==undefined?(pv.cp/100).toFixed(2):pv.mate!==undefined?'Mate in '+pv.mate:'—')}`);
+  analysis.innerHTML=`<div class="small">Depth ${data.depth??'?'} · ${data.knodes??'?'}k nodes</div>`+(lines.length?lines.map(x=>`<div style="margin-top:7px">${escapeHtml(x)}</div>`).join(''):'No lines returned.');
+ }catch(e){analysis.textContent='Could not reach the analysis service. Check your internet connection and try again.'}
+};
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+render();
+</script>
+</body></html>

@@ -11,19 +11,20 @@ header{padding:16px;text-align:center;background:#202020;border-bottom:1px solid
 main{max-width:1050px;margin:auto;padding:14px;display:grid;grid-template-columns:minmax(280px,1.15fr) minmax(260px,.85fr);gap:16px}
 .panel{background:var(--panel);border:1px solid #383838;border-radius:14px;padding:14px;min-width:0}
 #board{width:100%;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,minmax(0,1fr));overflow:hidden;border-radius:6px;touch-action:manipulation}
-.square{border:0;border-radius:0;position:relative;display:grid;place-items:center;padding:0;min-width:0;font-family:"Arial Unicode MS",serif;font-size:clamp(27px,6.5vw,58px);line-height:1;cursor:pointer}
-.light{background:var(--cream);color:#fff;text-shadow:1px 1px 2px #333,-1px -1px 2px #333}.dark{background:var(--green);color:#fff;text-shadow:1px 1px 2px #333,-1px -1px 2px #333}
+.square{border:0;border-radius:0;position:relative;display:grid;place-items:center;padding:0;min-width:0;cursor:pointer}
+.light{background:var(--cream)}.dark{background:var(--green)}
+.piece{display:block;width:88%;height:88%;object-fit:contain;pointer-events:none;user-select:none;-webkit-user-drag:none;filter:drop-shadow(0 1px 1px #0005)}
 .square.selected{box-shadow:inset 0 0 0 4px #f5d547}.square.target:after{content:"";position:absolute;width:22%;height:22%;border-radius:50%;background:#183d1b88;pointer-events:none}.square.capture:after{content:"";position:absolute;inset:4px;border:4px solid #183d1b99;border-radius:50%;pointer-events:none}
-.coord{position:absolute;z-index:1;font:11px system-ui;left:4px;top:2px;color:#283a20;text-shadow:none;pointer-events:none}
+.coord{position:absolute;z-index:1;font:11px system-ui;left:4px;top:2px;color:#283a20;pointer-events:none}
 .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-button,input,textarea{font:inherit}button{background:#3b3b3b;color:white;border:1px solid #555;border-radius:9px;padding:10px 13px;cursor:pointer}button.primary{background:#547d37;border-color:#6b984b}
+button,textarea{font:inherit}button{background:#3b3b3b;color:white;border:1px solid #555;border-radius:9px;padding:10px 13px;cursor:pointer}button.primary{background:#547d37;border-color:#6b984b}
 label{display:block;font-size:13px;color:#ccc;margin:12px 0 5px}textarea{width:100%;min-height:76px;background:#151515;color:white;border:1px solid #555;border-radius:8px;padding:10px;font:12px ui-monospace,monospace;resize:vertical}
-.status{color:var(--muted);font-size:13px;line-height:1.45;margin:10px 0}.result{background:#171717;border-radius:10px;padding:12px;margin-top:12px;min-height:90px}.small{font-size:12px;color:var(--muted)}.warning{font-size:12px;color:#e5c98c;line-height:1.45;margin-top:12px}
-@media(max-width:720px){main{grid-template-columns:1fr;padding:10px}.square{font-size:clamp(30px,10vw,52px)}}
+.status{color:var(--muted);font-size:13px;line-height:1.45;margin:10px 0;white-space:pre-line}.result{background:#171717;border-radius:10px;padding:12px;margin-top:12px;min-height:90px}.small{font-size:12px;color:var(--muted)}.warning{font-size:12px;color:#e5c98c;line-height:1.45;margin-top:12px}
+@media(max-width:720px){main{grid-template-columns:1fr;padding:10px}}
 </style>
 </head>
 <body>
-<header><h1>♟ Practice Chess Analyzer</h1><p>Set up a position, play moves, and analyse study positions.</p></header>
+<header><h1>♟ Practice Chess Analyzer</h1><p>Study positions, play moves, and explore evaluations.</p></header>
 <main>
 <section class="panel">
 <div id="board" aria-label="Interactive chessboard"></div>
@@ -36,12 +37,13 @@ label{display:block;font-size:13px;color:#ccc;margin:12px 0 5px}textarea{width:1
 <textarea id="fen" spellcheck="false">rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1</textarea>
 <div class="controls"><button id="load">Load FEN</button><button id="copy">Copy FEN</button></div>
 <div class="result"><div class="small">Analysis result</div><div id="analysis" class="status">Chessboard is loading.</div><button class="primary" id="analyse">Analyse position</button></div>
-<p class="warning">For practice and study. This page does not connect to or read the Chess.com app. Analysis uses the public Lichess cloud-evaluation database and may not have a cached result for every position.</p>
+<p class="warning">For practice and study. This page does not connect to or read the Chess.com app. Analysis uses Lichess's public cloud-evaluation database; not every position has a cached result. Piece artwork is loaded from a public CDN, so an internet connection is required.</p>
 </section>
 </main>
 <script type="module">
 const boardEl=document.querySelector('#board'),fenBox=document.querySelector('#fen'),turnEl=document.querySelector('#turn'),analysisEl=document.querySelector('#analysis');
-const glyph={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+const pieceCode={K:'wK',Q:'wQ',R:'wR',B:'wB',N:'wN',P:'wP',k:'bK',q:'bQ',r:'bR',b:'bB',n:'bN',p:'bP'};
+const pieceURL=code=>'https://cdn.jsdelivr.net/npm/chessboardjs@1.0.0/img/chesspieces/wikipedia/'+code+'.png';
 let game,flipped=false,selected=null;
 function message(s){analysisEl.textContent=s}
 function render(){
@@ -50,7 +52,7 @@ function render(){
  for(let ri=0;ri<8;ri++)for(let fi=0;fi<8;fi++){
   const file=files[fi],rank=ranks[ri],sq=file+rank,p=game.get(sq),b=document.createElement('button');
   b.type='button';b.className='square '+(((fi+ri)%2===0)?'light':'dark')+(selected===sq?' selected':'');
-  if(p)b.textContent=glyph[p.color==='w'?p.type.toUpperCase():p.type];
+  if(p){const img=document.createElement('img');img.className='piece';img.alt=(p.color==='w'?'White ':'Black ')+({k:'king',q:'queen',r:'rook',b:'bishop',n:'knight',p:'pawn'}[p.type]);img.src=pieceURL(pieceCode[p.color==='w'?p.type.toUpperCase():p.type]);img.onerror=()=>{img.alt='Piece image unavailable'};b.append(img)}
   if(fi===0){const c=document.createElement('span');c.className='coord';c.textContent=rank;b.append(c)}
   if(ri===7){const c=document.createElement('span');c.className='coord';c.style.left='auto';c.style.right='4px';c.style.top='auto';c.style.bottom='2px';c.textContent=file;b.append(c)}
   if(selected){try{if(game.moves({square:selected,verbose:true}).some(m=>m.to===sq))b.classList.add(p?'capture':'target')}catch(e){}}
@@ -69,7 +71,7 @@ function tap(sq){
 async function start(){
  try{
   const mod=await import('https://cdn.jsdelivr.net/npm/chess.js@1.4.0/+esm');
-  const Chess=mod.Chess;game=new Chess();
+  game=new mod.Chess();
   document.querySelector('#reset').onclick=()=>{game.reset();selected=null;message('Starting position loaded.');render()};
   document.querySelector('#flip').onclick=()=>{flipped=!flipped;render()};
   document.querySelector('#back').onclick=()=>{game.undo();selected=null;message('Move undone.');render()};
@@ -84,8 +86,8 @@ async function start(){
     message(lines.length?`Depth ${d.depth??'?'} · ${d.knodes??'?'}k nodes\n`+lines.join('\n'):'No lines returned.');
    }catch(e){message('Could not reach the analysis service. Check your internet connection and try again.')}
   };
-  render();message('Board ready. Tap Analyse for a study evaluation.');
- }catch(e){turnEl.textContent='Could not load the chess rules library. Check your internet connection, then refresh this page.';message('The chessboard library failed to load. Refresh while online.');console.error(e)}
+  render();message('Board ready. Tap Analyse to request a study evaluation.');
+ }catch(e){turnEl.textContent='Could not load the chess rules library. Check your internet connection, then refresh.';message('The chessboard library failed to load. Refresh while online.')}
 }
 start();
 </script>
